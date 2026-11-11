@@ -113,7 +113,9 @@ QtObject {
     configFile.setText(JSON.stringify(next, null, 2) + "\n")
   }
 
-  FileView {
+  // QtObject has no default child property, so the FileView is held on a
+  // declared property — the same shape Commons.Translations uses.
+  property FileView configFile: FileView {
     id: configFile
     path: root.configPath
     watchChanges: true

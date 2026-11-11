@@ -716,13 +716,13 @@ Item {
                   PlainText {
                     text: "󰈙"
                     color: root.accent
-                    anchors.verticalCenter: parent.verticalCenter
+                    Layout.alignment: Qt.AlignVCenter
                   }
                   PlainText {
                     text: strings.t("settings.openConfig")
                     color: root.accent
                     font.pixelSize: Style.font.bodySmall
-                    anchors.verticalCenter: parent.verticalCenter
+                    Layout.alignment: Qt.AlignVCenter
                   }
                 }
                 MouseArea {

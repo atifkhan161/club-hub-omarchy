@@ -68,14 +68,14 @@
   reserved). Installed dir: `~/.config/omarchy/plugins/atifkhan161.club-hub/`.
 
 ## 3. Execution Tasks (Vertical Slices)
-- [ ] **Task 1: Scaffold the plugin**
+- [x] **Task 1: Scaffold the plugin**
   - **Files:** `manifest.json`, `i18n/en.json`, `README.md`, `.gitignore`
   - **Details:** Manifest with `schemaVersion: 1`, `id: atifkhan161.club-hub`,
     `kinds: ["service","panel","bar-widget"]`, `entryPoints` mapping
     (`service→Service.qml`, `panel→Panel.qml`, `barWidget→BarWidget.qml`),
     `barWidget.defaultSection: "right"`. en.json with every UI string used later.
   - **Acceptance Criteria:** `omarchy plugin validate .` exits 0.
-- [ ] **Task 2: Config layer**
+- [x] **Task 2: Config layer**
   - **Files:** `Config.qml` (non-entry-point component), `~/.config/omarchy/club-hub.json` (created on first run with defaults)
   - **Details:** Quickshell `FileView` with `watchChanges: true` reading the XDG
     path; defaults merged for missing keys; schema validation (intervals clamped
@@ -83,7 +83,7 @@
     defaults with a logged warning rather than breaking the shell.
   - **Acceptance Criteria:** Editing the file while the panel is open updates the
     UI without a shell restart; a malformed file does not crash the shell.
-- [ ] **Task 3: RSS helper**
+- [x] **Task 3: RSS helper**
   - **Files:** `bin/rss.py`
   - **Details:** Stdin/stdout JSON tool: fetches a feed URL (urllib, 10s timeout,
     512KB read cap, UA `OmarchyPlugin/1.0 (Linux; Wayland)`), parses RSS 2.0 and
@@ -94,7 +94,7 @@
   - **Acceptance Criteria:** `python3 bin/rss.py https://www.managingmadrid.com/rss/index.xml`
     prints valid JSON with ≥3 items containing real titles, links, and authors;
     a bogus URL exits non-zero with an error object.
-- [ ] **Task 4: Service (data + polling)**
+- [x] **Task 4: Service (data + polling)**
   - **Files:** `Service.qml`
   - **Details:** curl `Process` for
     `GET https://api.football-data.org/v4/teams/{id}/matches?status=FINISHED,SCHEDULED,TIMED,IN_PLAY`
@@ -107,7 +107,7 @@
   - **Acceptance Criteria:** With a valid key, `omarchy-shell` logs show one fetch
     per interval (not per reload); killing the network mid-cycle keeps the panel
     populated with cached data and sets `errorState`.
-- [ ] **Task 5: Panel UI**
+- [x] **Task 5: Panel UI**
   - **Files:** `Panel.qml` (+ small `PanelModel.js` if formatting grows)
   - **Details:** PRD §6 wireframe: header (club name, refresh, gear), NEXT MATCH
     card, RECENT FORM strip (W green / D neutral / L red per theme tokens from
@@ -119,14 +119,14 @@
   - **Acceptance Criteria:** Panel matches the wireframe layout; empty, no-key,
     and offline states each render their designed fallback; a language switch
     re-renders strings live (`strings.t()` kept in bindings).
-- [ ] **Task 6: Bar widget**
+- [x] **Task 6: Bar widget**
   - **Files:** `BarWidget.qml`
   - **Details:** Icon-only widget on `qs.Ui` `BarWidget` base; click calls
     `shell.toggle(pluginId)`; visible only when the service has data or a
     configuration error to signal; theme-driven colors, no own palette.
   - **Acceptance Criteria:** Appears in `omarchy bar move` lists after enable,
     opens/closes the panel on click, follows theme changes live.
-- [ ] **Task 7: Install, polish, verify**
+- [x] **Task 7: Install, polish, verify**
   - **Files:** `README.md` (usage, config schema, data sources, polling disclosure, uninstall), final manifest tweaks
   - **Details:** Install the repo into the shell:
     `omarchy plugin add /home/atif/Work/sports-omarchy-plugin --enable` then

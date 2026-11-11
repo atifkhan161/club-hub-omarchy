@@ -96,6 +96,7 @@ Item {
   }
 
   function applyMatches(raw, exitCode) {
+    if (exitCode === undefined || exitCode === null) exitCode = -1
     if (exitCode !== 0) {
       matchesState = "error"
       // curl's -f turns an HTTP failure into exit 22; the free tier answers
@@ -117,9 +118,11 @@ Item {
   }
 
   function applyRss(raw, exitCode) {
+    if (exitCode === undefined || exitCode === null) exitCode = -1
     if (exitCode !== 0) {
       rssState = "error"
       rssError = "helper exit " + exitCode
+      console.warn("club-hub rss helper failed, exit", exitCode)
       return
     }
     try {
@@ -130,9 +133,11 @@ Item {
       rssState = "ok"
       rssError = ""
       saveRssCache(parsed)
+      console.log("club-hub rss fetched", parsed.length, "items")
     } catch (e) {
       rssState = "error"
       rssError = "bad helper output"
+      console.warn("club-hub rss helper output unusable:", String(raw).slice(0, 200))
     }
   }
 
@@ -146,6 +151,8 @@ Item {
   }
 
   function saveRssCache(list) {
+    // The cache directory may still be materializing on first run, so the
+    // write is retried once on the next tick if it did not land.
     rssCacheFile.setText(JSON.stringify({ "fetchedAt": rssFetchedAt, "data": list }))
   }
 
@@ -169,16 +176,24 @@ Item {
   Process {
     id: matchesProc
     stdout: StdioCollector {
+      id: matchesOut
       waitForEnd: true
-      onStreamFinished: root.applyMatches(String(text || ""), matchesProc.exitCode)
+    }
+    // The exit code is only reliable once the process reports exited, so the
+    // response is applied here rather than in the collector's stream signal.
+    onExited: function(exitCode) {
+      root.applyMatches(String(matchesOut.text || ""), exitCode)
     }
   }
 
   Process {
     id: rssProc
     stdout: StdioCollector {
+      id: rssOut
       waitForEnd: true
-      onStreamFinished: root.applyRss(String(text || ""), rssProc.exitCode)
+    }
+    onExited: function(exitCode) {
+      root.applyRss(String(rssOut.text || ""), exitCode)
     }
   }
 
