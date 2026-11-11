@@ -36,7 +36,7 @@
 
 ## 3. Execution Tasks (Vertical Slices)
 
-- [ ] **Task 1: `bin/rss.py` — emit structured text blocks**
+- [x] **Task 1: `bin/rss.py` — emit structured text blocks**
   - **Files:** `bin/rss.py`
   - **Details:** Add a stdlib `html.parser.HTMLParser` subclass that walks
     `<content>` (Atom) / `<description>` (RSS) and outputs
@@ -49,7 +49,7 @@
     prints items whose first blocks match the article title theme; no item without
     title/link; exit 0; malformed feeds still fail with one JSON error line.
 
-- [ ] **Task 2: `Service.qml` + `Model.js` — validation pass-through**
+- [x] **Task 2: `Service.qml` + `Model.js` — validation pass-through**
   - **Files:** `Service.qml`, `Model.js`
   - **Details:** `Model.articleBlocks(item)` returns `item.blocks` only when it is
     an array of `{t, text}` objects with string `text`, else `[]` (pure helper,
@@ -58,7 +58,7 @@
   - **Acceptance:** old cache still loads; helper unit-style check in a throwaway
     offscreen harness or code review (no automated suites per project norms).
 
-- [ ] **Task 3: `Panel.qml` — reader view**
+- [x] **Task 3: `Panel.qml` — reader view**
   - **Files:** `Panel.qml`
   - **Details:**
     - `view: "hub" | "settings" | "reader"`, plus `property int readerIndex: -1`.
@@ -77,12 +77,12 @@
   - **Acceptance:** qmlformat parses; panel opens/closes clean in `journalctl`;
     clicking an article shows the article; hub/settings unaffected.
 
-- [ ] **Task 4: `i18n/en.json` — reader strings**
+- [x] **Task 4: `i18n/en.json` — reader strings**
   - **Details:** `reader.back`, `reader.openBrowser`, `reader.noContent`,
     `reader.noContentHint`, `reader.truncated`.
   - **Acceptance:** valid JSON; no missing-key fallbacks triggered at runtime.
 
-- [ ] **Task 5: Install, verify, commit**
+- [x] **Task 5: Install, verify, commit**
   - **Files:** installed clone `~/.config/omarchy/plugins/atifkhan161.club-hub/`
   - **Details:** commit first (installs clone the committed tree), restart shell
     (service + panel changed), run all gates.
@@ -103,3 +103,11 @@
   6. User confirms click behavior on their side (I cannot inject clicks)
 - **Rollback:** single `git revert` of the feature commit; the installed clone is
   refreshed by re-copying files. Old rss cache remains valid either way.
+
+## 5. Status
+- Implemented in commit `0b25353`; installed clone refreshed to the same commit.
+- Automated gates pass: real-feed block extraction (10/10 articles with text), RSS 2.0/
+  malformed-feed cases, `omarchy plugin validate`, `qmlformat`, offscreen Model and
+  Panel harnesses, and a clean shell restart (no plugin QML warnings).
+- Manual click-through (reader opens, footer opens browser, back/close reset) remains
+  for the user to confirm on their side.
