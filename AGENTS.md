@@ -86,3 +86,26 @@ tests/                 python3 tests + offscreen QML harness
   interactive sudo prompt.
 - Plugin network access must be explicit: fixed HTTPS sources, timeouts, size limits,
   validation. Treat all text (network, files, IPC) as untrusted markup input.
+
+## Hard-won plugin-QML gotchas (learned here, verified in journalctl)
+
+- **`QtObject` has no default child property.** A bare `FileView { ... }` inside a
+  QtObject fails with "Cannot assign to non-existent default property" and the whole
+  plugin file fails to load. Declare it: `property FileView file: FileView { ... }`
+  (the shape `Commons/Translations.qml` uses).
+- **Read process exit codes in `Process.onExited(function(exitCode))`**, and read the
+  response from the `StdioCollector`'s `.text` there. `onStreamFinished` fires before
+  `exitCode` is valid (it reads as `undefined`), which turns every success into a
+  failure.
+- **`qmllint` is broken on this machine** (exit 0 even for broken QML). Use
+  `qmlformat <file>` as the syntax gate; the `qml` runtime also fails to load
+  anything ("Did not load any objects"), so offscreen harnesses via `qml` don't work.
+- **`omarchy plugin add` clones the committed tree**, not the working directory —
+  commit before installing or the manifest is "missing".
+- **Service-kind hot reload is unreliable**: editing files under
+  `~/.config/omarchy/plugins/` reloads panels/bar widgets, but a changed service can
+  keep running its old instance. After changing `Service.qml`, run
+  `omarchy restart shell` and verify via `journalctl --user | grep <plugin-id>`.
+- Shell-side load errors surface only in `journalctl --user -f`
+  (`omarchy-shell[pid]: WARN qml: ...`) — never silently fail a plugin file without
+  checking there.
