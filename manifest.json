@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "atifkhan161.club-hub",
+  "name": "Club Hub",
+  "version": "0.1.0",
+  "author": "atifkhan161",
+  "license": "MIT",
+  "description": "Track one football club's next fixture, last five results, and club news feed. Open with: omarchy-shell shell toggle atifkhan161.club-hub",
+  "kinds": [
+    "service",
+    "panel",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "panel": "Panel.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Club Hub",
+    "description": "Football fixtures, results, and club news.",
+    "category": "Sports",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

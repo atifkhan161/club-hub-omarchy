@@ -1,0 +1,257 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import "Model.js" as Model
+
+// The plugin's data owner, mounted once by the shell at startup (kind
+// "service"). The panel and the bar widget read it through the scoped
+// `shell.serviceFor(id)` instead of fetching anything themselves, so there is
+// exactly one poller no matter how many surfaces are open.
+//
+// Network work follows the house rules: fixed https endpoints with explicit
+// timeouts, argument-list processes (no shell), size-capped parsing, and
+// keep-last-good on failure. Responses are cached in $XDG_CACHE_HOME so a
+// shell reload, lock, or unlock never refetches inside the interval.
+
+Item {
+  id: root
+
+  // Injected by the shell when the service is created.
+  property var shell: null
+  property var manifest: null
+
+  Config { id: config }
+  // The whole validated-config object, handed to the panel and bar widget
+  // (ids are file-scoped and invisible across files, so the panel cannot
+  // reach the Config instance any other way).
+  readonly property var hubConfig: config
+
+  readonly property string selfId: manifest && manifest.id ? manifest.id : "atifkhan161.club-hub"
+  readonly property string rssScript: decodeURIComponent(String(Qt.resolvedUrl("bin/rss.py")).replace(/^file:\/\//, ""))
+  readonly property string cacheDir: {
+    var xdg = Quickshell.env("XDG_CACHE_HOME")
+    return (xdg && xdg.length > 0 ? xdg : (Quickshell.env("HOME") + "/.cache")) + "/omarchy/club-hub"
+  }
+
+  // ---- matches state -------------------------------------------------------------
+  property var matchesData: []
+  property string matchesState: "loading"   // "loading" | "ok" | "error" | "no-key"
+  property string matchesError: ""
+  property real matchesFetchedAt: 0
+
+  readonly property var nextMatch: Model.nextMatch(matchesData)
+  readonly property var lastFive: Model.lastFive(matchesData)
+  readonly property string teamName: Model.teamName(matchesData, config.teamId)
+
+  // ---- rss state -----------------------------------------------------------------
+  property var rssData: []
+  property string rssState: "loading"       // "loading" | "ok" | "error"
+  property string rssError: ""
+  property real rssFetchedAt: 0
+
+  readonly property var rssItems: rssData.slice(0, config.maxRssItems)
+
+  // ---- fetching ------------------------------------------------------------------
+  function matchesCacheStale() {
+    return Date.now() - matchesFetchedAt > config.matchIntervalMinutes * 60000
+  }
+
+  function rssCacheStale() {
+    return Date.now() - rssFetchedAt > config.rssIntervalMinutes * 60000
+  }
+
+  function maybeRefresh() {
+    if (matchesCacheStale()) fetchMatches(false)
+    if (rssCacheStale()) fetchRss(false)
+  }
+
+  function refreshAll() {
+    fetchMatches(true)
+    fetchRss(true)
+  }
+
+  function fetchMatches(force) {
+    if (!force && !matchesCacheStale()) return
+    if (config.apiKey === "") {
+      matchesState = "no-key"
+      return
+    }
+    matchesState = "loading"
+    matchesError = ""
+    matchesProc.command = [
+      "curl", "-fsS", "--max-time", "15",
+      "-H", "X-Auth-Token: " + config.apiKey,
+      "https://api.football-data.org/v4/teams/" + config.teamId
+        + "/matches?status=FINISHED,SCHEDULED,TIMED,IN_PLAY"
+    ]
+    matchesProc.running = true
+  }
+
+  function fetchRss(force) {
+    if (!force && !rssCacheStale()) return
+    rssState = "loading"
+    rssError = ""
+    rssProc.command = ["python3", rssScript, config.rssUrl]
+    rssProc.running = true
+  }
+
+  function applyMatches(raw, exitCode) {
+    if (exitCode !== 0) {
+      matchesState = "error"
+      // curl's -f turns an HTTP failure into exit 22; the free tier answers
+      // 400/403 for a bad or missing token.
+      matchesError = exitCode === 22 ? "HTTP error" : "curl exit " + exitCode
+      return
+    }
+    var list = Model.matchList(raw)
+    if (list.length === 0 && String(raw).trim() === "") {
+      matchesState = "error"
+      matchesError = "empty response"
+      return
+    }
+    matchesData = list
+    matchesFetchedAt = Date.now()
+    matchesState = "ok"
+    matchesError = ""
+    saveMatchesCache(list)
+  }
+
+  function applyRss(raw, exitCode) {
+    if (exitCode !== 0) {
+      rssState = "error"
+      rssError = "helper exit " + exitCode
+      return
+    }
+    try {
+      var parsed = JSON.parse(String(raw || ""))
+      if (!Array.isArray(parsed)) throw new Error("not an array")
+      rssData = parsed
+      rssFetchedAt = Date.now()
+      rssState = "ok"
+      rssError = ""
+      saveRssCache(parsed)
+    } catch (e) {
+      rssState = "error"
+      rssError = "bad helper output"
+    }
+  }
+
+  // ---- cache ---------------------------------------------------------------------
+  function ensureCacheDir() {
+    if (!mkCacheDir.running) mkCacheDir.running = true
+  }
+
+  function saveMatchesCache(list) {
+    matchesCacheFile.setText(JSON.stringify({ "fetchedAt": matchesFetchedAt, "data": list }))
+  }
+
+  function saveRssCache(list) {
+    rssCacheFile.setText(JSON.stringify({ "fetchedAt": rssFetchedAt, "data": list }))
+  }
+
+  Component.onCompleted: {
+    ensureCacheDir()
+    // FileViews load asynchronously; when they land they either hand back
+    // cached data or leave the defaults, and the timers take it from there.
+    matchTimer.restart()
+    rssTimer.restart()
+    staleCheck.start()
+  }
+
+  // Kick off a fetch once the cache files have had their chance to load.
+  Timer {
+    id: staleCheck
+    interval: 1500
+    onTriggered: root.maybeRefresh()
+  }
+
+  // ---- processes -----------------------------------------------------------------
+  Process {
+    id: matchesProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyMatches(String(text || ""), matchesProc.exitCode)
+    }
+  }
+
+  Process {
+    id: rssProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyRss(String(text || ""), rssProc.exitCode)
+    }
+  }
+
+  // House pattern for directory creation: a plain bash process, not a shell
+  // interpolating user data.
+  Process {
+    id: mkCacheDir
+    command: ["bash", "-c", "mkdir -p \"$0\"", root.cacheDir]
+  }
+
+  // ---- timers --------------------------------------------------------------------
+  Timer {
+    id: matchTimer
+    repeat: true
+    interval: config.matchIntervalMinutes * 60000
+    onTriggered: root.fetchMatches(false)
+  }
+
+  Timer {
+    id: rssTimer
+    repeat: true
+    interval: config.rssIntervalMinutes * 60000
+    onTriggered: root.fetchRss(false)
+  }
+
+  // Config edits restart the cadence and refetch immediately when the club
+  // or feed changed, so the panel never shows another team's data.
+  Connections {
+    target: config
+    function onTeamIdChanged() { root.fetchMatches(true) }
+    function onRssUrlChanged() { root.fetchRss(true) }
+    function onMatchIntervalMinutesChanged() { matchTimer.restart(); root.fetchMatches(true) }
+    function onRssIntervalMinutesChanged() { rssTimer.restart(); root.fetchRss(true) }
+    function onApiKeyChanged() { root.fetchMatches(true) }
+    function onMaxRssItemsChanged() { /* rssItems re-slices on its own */ }
+  }
+
+  // ---- cache files ---------------------------------------------------------------
+  FileView {
+    id: matchesCacheFile
+    path: root.cacheDir + "/matches-cache.json"
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var cached = JSON.parse(String(text() || "{}"))
+        if (Array.isArray(cached.data)) {
+          root.matchesData = cached.data
+          root.matchesFetchedAt = Number(cached.fetchedAt) || 0
+          if (root.matchesState === "loading" && cached.data.length > 0) root.matchesState = "ok"
+        }
+      } catch (e) { /* corrupt cache: fall through to a fresh fetch */ }
+    }
+    onLoadFailed: function(error) { /* no cache yet: the timers will fetch */ }
+  }
+
+  FileView {
+    id: rssCacheFile
+    path: root.cacheDir + "/rss-cache.json"
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var cached = JSON.parse(String(text() || "{}"))
+        if (Array.isArray(cached.data)) {
+          root.rssData = cached.data
+          root.rssFetchedAt = Number(cached.fetchedAt) || 0
+          if (root.rssState === "loading" && cached.data.length > 0) root.rssState = "ok"
+        }
+      } catch (e) { /* corrupt cache: fall through to a fresh fetch */ }
+    }
+    onLoadFailed: function(error) { /* no cache yet: the timers will fetch */ }
+  }
+}
