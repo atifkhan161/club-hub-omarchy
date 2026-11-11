@@ -47,6 +47,7 @@ Item {
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   property color accent: Color.accent
   property color urgent: Color.urgent
+  readonly property color selBg: Color.menu.selectedBackground
   readonly property color muted: Color.muted
   readonly property color secondary: Qt.rgba(foreground.r * 0.65 + background.r * 0.35,
                                              foreground.g * 0.65 + background.g * 0.35,
@@ -177,6 +178,10 @@ Item {
 
       ColumnLayout {
         anchors.fill: parent
+        // anchors.fill ignores the card's padding, so the content margins
+        // carry it instead — otherwise the header row sits flush against
+        // the card border.
+        anchors.margins: Style.spacing.panelPadding
         spacing: Style.space(8)
 
         // ------------------------------------------------------------- header
@@ -222,7 +227,13 @@ Item {
           }
         }
 
-        Rectangle { Layout.fillWidth: true; height: 1; color: root.border }
+        Rectangle {
+          Layout.fillWidth: true
+          height: 1
+          color: root.border
+          Layout.topMargin: Style.space(2)
+          Layout.bottomMargin: Style.space(4)
+        }
 
         // ------------------------------------------------------------ content
         // Settings view replaces the hub view; each keeps its own scroll.
@@ -244,7 +255,7 @@ Item {
             ColumnLayout {
               id: hubColumn
               width: hubFlick.width
-              spacing: Style.space(10)
+              spacing: Style.spacing.panelGap
 
               // ---------------------------------------------------- next match
               PanelSectionHeader {
@@ -322,109 +333,120 @@ Item {
                 font.pixelSize: Style.font.bodySmall
               }
 
-              // The fixture card itself.
-              ColumnLayout {
+              // The fixture card itself, on its own padded block.
+              Rectangle {
                 visible: root.nextMatch !== null
-                spacing: Style.space(6)
+                radius: Style.cornerRadius
+                color: root.selBg
                 Layout.fillWidth: true
+                implicitHeight: fixtureColumn.implicitHeight + Style.space(20)
 
-                PlainText {
-                  text: root.nextMatch
-                    ? (root.nextMatch.competition && root.nextMatch.competition.name
-                       || root.nextMatch.competition && root.nextMatch.competition.code || "")
-                    : ""
-                  color: root.muted
-                  font.pixelSize: Style.font.caption
-                  elide: Text.ElideRight
-                  Layout.fillWidth: true
-                  visible: text !== ""
-                }
-
-                RowLayout {
+                ColumnLayout {
+                  id: fixtureColumn
+                  anchors.fill: parent
+                  anchors.margins: Style.space(10)
                   spacing: Style.space(8)
-                  Layout.fillWidth: true
 
                   PlainText {
                     text: root.nextMatch
-                      ? (root.nextMatch.homeTeam && (root.nextMatch.homeTeam.shortName
-                         || root.nextMatch.homeTeam.name) || strings.t("match.unknownOpponent"))
+                      ? (root.nextMatch.competition && root.nextMatch.competition.name
+                         || root.nextMatch.competition && root.nextMatch.competition.code || "")
                       : ""
-                    color: root.teamIdMatches && Model.isHome(root.nextMatch, root.hubConfig ? root.hubConfig.teamId : -1)
-                      ? root.accent : root.foreground
-                    font.pixelSize: Style.font.heading
-                    font.bold: true
+                    color: root.muted
+                    font.pixelSize: Style.font.caption
                     elide: Text.ElideRight
                     Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignLeft
+                    visible: text !== ""
                   }
 
-                  ColumnLayout {
-                    spacing: 0
-                    PlainText {
-                      text: strings.t("match.vs")
-                      color: root.muted
-                      font.pixelSize: Style.font.bodySmall
-                      Layout.alignment: Qt.AlignHCenter
-                    }
-                    // Opponent crest: an https image URL straight from the
-                    // API payload, decoded at a bounded size, hidden entirely
-                    // when the user turned crests off or the URL looks off.
-                    Image {
-                      readonly property var opp: root.nextMatch
-                        ? Model.opponentOf(root.nextMatch, root.hubConfig ? root.hubConfig.teamId : -1) : null
-                      source: root.hubConfig && root.hubConfig.showCrest && opp && Model.crestOk(opp.crest)
-                        ? opp.crest : ""
-                      visible: source !== ""
-                      asynchronous: true
-                      fillMode: Image.PreserveAspectFit
-                      sourceSize: Qt.size(22, 22)
-                      smooth: true
-                      Layout.alignment: Qt.AlignHCenter
-                    }
-                  }
-
-                  PlainText {
-                    text: root.nextMatch
-                      ? (root.nextMatch.awayTeam && (root.nextMatch.awayTeam.shortName
-                         || root.nextMatch.awayTeam.name) || strings.t("match.unknownOpponent"))
-                      : ""
-                    color: root.teamIdMatches && !Model.isHome(root.nextMatch, root.hubConfig ? root.hubConfig.teamId : -1)
-                      ? root.accent : root.foreground
-                    font.pixelSize: Style.font.heading
-                    font.bold: true
-                    elide: Text.ElideRight
+                  RowLayout {
+                    spacing: Style.space(10)
                     Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignRight
-                  }
-                }
 
-                RowLayout {
-                  spacing: Style.space(6)
-                  Layout.fillWidth: true
-                  PlainText {
-                    text: root.nextMatch
-                      ? Model.kickoffLabel(root.nextMatch.utcDate, Commons.I18n.formatLocale)
-                      : ""
-                    color: root.secondary
-                    font.pixelSize: Style.font.bodySmall
-                  }
-                  Rectangle {
-                    radius: Style.cornerRadius
-                    color: root.nextMatch && root.nextMatch.status === "IN_PLAY"
-                      ? root.urgent : root.selBg
-                    width: countdownText.implicitWidth + Style.space(12)
-                    height: countdownText.implicitHeight + Style.space(6)
                     PlainText {
-                      id: countdownText
-                      anchors.centerIn: parent
-                      text: root.countdownLabel(root.nextMatch)
-                      color: root.nextMatch && root.nextMatch.status === "IN_PLAY"
-                        ? root.background : root.accent
-                      font.pixelSize: Style.font.caption
+                      text: root.nextMatch
+                        ? (root.nextMatch.homeTeam && (root.nextMatch.homeTeam.shortName
+                           || root.nextMatch.homeTeam.name) || strings.t("match.unknownOpponent"))
+                        : ""
+                      color: root.teamIdMatches && Model.isHome(root.nextMatch, root.hubConfig ? root.hubConfig.teamId : -1)
+                        ? root.accent : root.foreground
+                      font.pixelSize: Style.font.heading
                       font.bold: true
+                      elide: Text.ElideRight
+                      Layout.fillWidth: true
+                      horizontalAlignment: Text.AlignLeft
+                    }
+
+                    ColumnLayout {
+                      spacing: 0
+                      PlainText {
+                        text: strings.t("match.vs")
+                        color: root.muted
+                        font.pixelSize: Style.font.bodySmall
+                        Layout.alignment: Qt.AlignHCenter
+                      }
+                      // Opponent crest, downloaded by the service into the
+                      // cache and shown from the local file — never loaded
+                      // over the network by the Image element itself, and
+                      // hidden entirely when the user turned crests off.
+                      Image {
+                        source: root.hubConfig && root.hubConfig.showCrest
+                          && root.service && root.service.crestFileUrl !== ""
+                          ? root.service.crestFileUrl : ""
+                        visible: source !== ""
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectFit
+                        sourceSize: Qt.size(22, 22)
+                        smooth: true
+                        Layout.alignment: Qt.AlignHCenter
+                      }
+                    }
+
+                    PlainText {
+                      text: root.nextMatch
+                        ? (root.nextMatch.awayTeam && (root.nextMatch.awayTeam.shortName
+                           || root.nextMatch.awayTeam.name) || strings.t("match.unknownOpponent"))
+                        : ""
+                      color: root.teamIdMatches && !Model.isHome(root.nextMatch, root.hubConfig ? root.hubConfig.teamId : -1)
+                        ? root.accent : root.foreground
+                      font.pixelSize: Style.font.heading
+                      font.bold: true
+                      elide: Text.ElideRight
+                      Layout.fillWidth: true
+                      horizontalAlignment: Text.AlignRight
                     }
                   }
-                  Item { Layout.fillWidth: true }
+
+                  RowLayout {
+                    spacing: Style.space(8)
+                    Layout.fillWidth: true
+                    PlainText {
+                      text: root.nextMatch
+                        ? Model.kickoffLabel(root.nextMatch.utcDate, Commons.I18n.formatLocale)
+                        : ""
+                      color: root.secondary
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                    Rectangle {
+                      radius: Style.cornerRadius
+                      color: root.nextMatch && root.nextMatch.status === "IN_PLAY"
+                        ? root.urgent : root.accent
+                      Layout.alignment: Qt.AlignLeft
+                      implicitWidth: countdownText.implicitWidth + Style.space(16)
+                      implicitHeight: countdownText.implicitHeight + Style.space(8)
+                      PlainText {
+                        id: countdownText
+                        anchors.centerIn: parent
+                        text: root.countdownLabel(root.nextMatch)
+                        // Both badge colors (accent, urgent) are read with
+                        // theme-background text on top.
+                        color: root.background
+                        font.pixelSize: Style.font.caption
+                        font.bold: true
+                      }
+                    }
+                    Item { Layout.fillWidth: true }
+                  }
                 }
               }
 
@@ -437,10 +459,18 @@ Item {
 
               Repeater {
                 model: root.lastFive
-                delegate: RowLayout {
+                delegate: Rectangle {
                   required property var modelData
-                  spacing: Style.space(8)
+                  color: "transparent"
                   Layout.fillWidth: true
+                  implicitHeight: formRow.implicitHeight + Style.space(10)
+                  radius: Style.cornerRadius
+
+                  RowLayout {
+                    id: formRow
+                    anchors.fill: parent
+                    anchors.margins: Style.space(5)
+                    spacing: Style.space(10)
 
                   Rectangle {
                     radius: Style.cornerRadius
@@ -448,8 +478,9 @@ Item {
                     readonly property color base: letter === "W" ? root.accent
                       : letter === "L" ? root.urgent : root.muted
                     color: base
-                    width: resultLetter.implicitWidth + Style.space(10)
-                    height: resultLetter.implicitHeight + Style.space(4)
+                    Layout.alignment: Qt.AlignVCenter
+                    implicitWidth: resultLetter.implicitWidth + Style.space(12)
+                    implicitHeight: resultLetter.implicitHeight + Style.space(6)
                     PlainText {
                       id: resultLetter
                       anchors.centerIn: parent
@@ -484,6 +515,7 @@ Item {
                     text: Model.shortDate(modelData.utcDate, Commons.I18n.formatLocale)
                     color: root.muted
                     font.pixelSize: Style.font.caption
+                  }
                   }
                 }
               }
@@ -526,14 +558,15 @@ Item {
 
                   Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: articleRow.implicitHeight + Style.space(8)
+                    implicitHeight: articleRow.implicitHeight + Style.space(14)
                     radius: Style.cornerRadius
                     color: articleArea.containsMouse ? root.selBg : "transparent"
 
                     RowLayout {
                       id: articleRow
                       anchors.fill: parent
-                      anchors.margins: Style.space(4)
+                      anchors.margins: Style.space(6)
+                      anchors.leftMargin: Style.space(10)
                       spacing: Style.space(8)
 
                       ColumnLayout {
@@ -588,7 +621,7 @@ Item {
             ColumnLayout {
               id: settingsColumn
               width: settingsFlick.width
-              spacing: Style.space(8)
+              spacing: Style.space(12)
               visible: root.hubConfig !== null
 
               PlainText {

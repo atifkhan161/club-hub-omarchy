@@ -116,18 +116,23 @@ function countdown(utcDate, now) {
 }
 
 // Localized "Sat, Nov 21 · 20:00". The locale comes from the caller, since a
-// .pragma library cannot import qs.Commons.
+// .pragma library cannot import qs.Commons. Formatting goes through the
+// locale-aware Date methods — the same calls the clock panel uses — because
+// the Qt.formatDate/Qt.formatDateTime locale overloads throw from a
+// .pragma library in this Qt build.
 function kickoffLabel(utcDate, localeName) {
   var then = safeDate(utcDate)
   if (!then) return ""
-  return Qt.formatDateTime(then, "ddd, MMM d · HH:mm", Qt.locale(localeName))
+  var locale = Qt.locale(localeName)
+  return then.toLocaleDateString(locale, "ddd, MMM d")
+    + " · " + then.toLocaleTimeString(locale, "HH:mm")
 }
 
 // Short "21 Nov" date for form rows.
 function shortDate(utcDate, localeName) {
   var then = safeDate(utcDate)
   if (!then) return ""
-  return Qt.formatDate(then, "d MMM", Qt.locale(localeName))
+  return then.toLocaleDateString(Qt.locale(localeName), "d MMM")
 }
 
 // Age of a published ISO timestamp, for the panel to translate:

@@ -42,6 +42,7 @@ Item {
   readonly property var nextMatch: Model.nextMatch(matchesData)
   readonly property var lastFive: Model.lastFive(matchesData)
   readonly property string teamName: Model.teamName(matchesData, config.teamId)
+  onNextMatchChanged: root.updateCrest()
 
   // ---- rss state -----------------------------------------------------------------
   property var rssData: []
@@ -50,6 +51,29 @@ Item {
   property real rssFetchedAt: 0
 
   readonly property var rssItems: rssData.slice(0, config.maxRssItems)
+
+  // ---- crest state ----------------------------------------------------------------
+  // The opponent crest is downloaded by curl into the cache and shown from the
+  // local file. A QML Image pointed straight at the https crest URL crashed
+  // the whole shell once (Qt 6.12 TLS-backend crash inside QNetworkAccessManager
+  // during SSL-cert init), and keeping the download in curl matches the
+  // plugin's network policy anyway: fixed source, timeout, size cap.
+  property string crestFileUrl: ""
+  property string crestRequestedUrl: ""
+
+  function updateCrest() {
+    var opp = Model.opponentOf(root.nextMatch, config.teamId)
+    var url = opp && Model.crestOk(opp.crest) ? opp.crest : ""
+    if (url === root.crestRequestedUrl) return
+    root.crestRequestedUrl = url
+    if (url === "") {
+      root.crestFileUrl = ""
+      return
+    }
+    crestProc.command = ["curl", "-fsS", "--max-time", "10", "--max-filesize", "524288",
+                         "-o", root.cacheDir + "/crest-cache.img", url]
+    crestProc.running = true
+  }
 
   // ---- fetching ------------------------------------------------------------------
   function matchesCacheStale() {
@@ -84,6 +108,7 @@ Item {
       "https://api.football-data.org/v4/teams/" + config.teamId
         + "/matches?status=FINISHED,SCHEDULED,TIMED,IN_PLAY"
     ]
+    console.log("club-hub fetching matches for team", config.teamId)
     matchesProc.running = true
   }
 
@@ -102,6 +127,8 @@ Item {
       // curl's -f turns an HTTP failure into exit 22; the free tier answers
       // 400/403 for a bad or missing token.
       matchesError = exitCode === 22 ? "HTTP error" : "curl exit " + exitCode
+      console.warn("club-hub matches fetch failed:", matchesError,
+        "stderr:", String(matchesErr.text || "").slice(0, 200))
       return
     }
     var list = Model.matchList(raw)
@@ -115,6 +142,8 @@ Item {
     matchesState = "ok"
     matchesError = ""
     saveMatchesCache(list)
+    console.log("club-hub matches fetched", list.length, "fixtures; next:",
+      Model.nextMatch(list) ? Model.nextMatch(list).utcDate : "none")
   }
 
   function applyRss(raw, exitCode) {
@@ -179,6 +208,10 @@ Item {
       id: matchesOut
       waitForEnd: true
     }
+    stderr: StdioCollector {
+      id: matchesErr
+      waitForEnd: true
+    }
     // The exit code is only reliable once the process reports exited, so the
     // response is applied here rather than in the collector's stream signal.
     onExited: function(exitCode) {
@@ -194,6 +227,16 @@ Item {
     }
     onExited: function(exitCode) {
       root.applyRss(String(rssOut.text || ""), exitCode)
+    }
+  }
+
+  // Opponent crest download. Exit 63 is curl's --max-filesize refusal; both
+  // failures just clear the crest instead of showing a stale club's badge.
+  Process {
+    id: crestProc
+    onExited: function(exitCode) {
+      root.crestFileUrl = exitCode === 0 ? "file://" + root.cacheDir + "/crest-cache.img" : ""
+      if (exitCode !== 0) console.warn("club-hub crest download failed, curl exit", exitCode)
     }
   }
 
@@ -223,7 +266,7 @@ Item {
   // or feed changed, so the panel never shows another team's data.
   Connections {
     target: config
-    function onTeamIdChanged() { root.fetchMatches(true) }
+    function onTeamIdChanged() { root.fetchMatches(true); root.updateCrest() }
     function onRssUrlChanged() { root.fetchRss(true) }
     function onMatchIntervalMinutesChanged() { matchTimer.restart(); root.fetchMatches(true) }
     function onRssIntervalMinutesChanged() { rssTimer.restart(); root.fetchRss(true) }

@@ -109,3 +109,15 @@ tests/                 python3 tests + offscreen QML harness
 - Shell-side load errors surface only in `journalctl --user -f`
   (`omarchy-shell[pid]: WARN qml: ...`) — never silently fail a plugin file without
   checking there.
+- **An undefined color binding renders as Rectangle's default white**, not transparent.
+  A `root.selBg` used before it is declared silently paints white blocks on a dark
+  theme. Declare every theme color on the panel root
+  (`readonly property color selBg: Color.menu.selectedBackground`) before using it.
+- **Never point a QML `Image` at a remote https URL.** In this Qt 6.12 build that path
+  goes through `QNetworkAccessManager` and crashed the whole shell once (TLS-backend
+  crash inside `QSslCertificate`/OpenSSL decoder init — crash report in
+  `~/.cache/quickshell/crashes/`). Fetch binaries with the plugin's own curl Process
+  (timeout + `--max-filesize`) into the cache and show the local `file://` path.
+- **Panel hot reload can serve a stale instance too** (not just services): after
+  changing `Panel.qml`, verify via a full `omarchy restart shell` before concluding a
+  change had no effect.
