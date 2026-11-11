@@ -2,8 +2,14 @@
 """Fetch and parse a club news feed (RSS 2.0 or Atom) into JSON.
 
 Prints one JSON array to stdout:
-  [{"title", "link", "author", "published", "snippet"}]
+  [{"title", "link", "author", "published", "snippet",
+    "blocks": [{"t": "h"|"p"|"li", "text"}], "truncated"}]
 newest first, or {"error": "..."} on stderr with a non-zero exit.
+
+`blocks` comes from the feed's own full-content element (Atom <content>, RSS
+<description>/<summary>), flattened to plain text: no tags, attributes, URLs,
+images, or scripts. It is a display convenience, not a trust boundary — the
+QML side still renders every string as PlainText.
 
 No third-party dependencies; only the standard library. The URL comes from
 the plugin's own config, and everything parsed out of the feed is treated as
@@ -18,10 +24,13 @@ import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 
 MAX_BYTES = 1_000_000
 TIMEOUT = 10
 SNIPPET_LEN = 220
+MAX_BLOCKS = 250
+MAX_BLOCK_CHARS = 2000
 UA = "OmarchyPlugin/1.0 (Linux; Wayland)"
 
 
@@ -105,6 +114,125 @@ def clean_snippet(element) -> str:
     return text[:SNIPPET_LEN].rsplit(" ", 1)[0] if len(text) > SNIPPET_LEN else text
 
 
+HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+# Block-level tags that end the current paragraph/list item.
+BLOCK_TAGS = {
+    "address", "article", "aside", "blockquote", "dd", "div", "dl", "dt",
+    "fieldset", "figcaption", "footer", "form", "h1", "h2", "h3", "h4", "h5",
+    "h6", "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section",
+    "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+}
+# Subtrees dropped entirely, including their text: media, embeds, and the
+# chrome some feeds wrap around the article body.
+SKIP_TAGS = {
+    "script", "style", "img", "svg", "noscript", "iframe", "figure",
+    "figcaption", "video", "audio", "canvas", "object", "embed", "template",
+}
+
+
+class BlockExtractor(HTMLParser):
+    """Flatten article HTML into heading/paragraph/list-item text blocks.
+
+    The feed's <content> is untrusted markup, so nothing here keeps tags,
+    attributes, or URLs: only text, split on the tags that carry structure.
+    Caps keep one hostile or enormous article from filling the panel.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.blocks = []
+        self.truncated = False
+        self._parts = []
+        self._kind = "p"
+        self._skip = 0
+
+    @staticmethod
+    def _tag(tag: str) -> str:
+        return tag.lower().rsplit(":", 1)[-1]
+
+    def _flush(self) -> None:
+        raw = "".join(self._parts)
+        self._parts = []
+        # collapse runs of whitespace, then unescape any entity that survived
+        # the XML/HTML decoding (some feeds double-escape their content).
+        text = html.unescape(re.sub(r"\s+", " ", raw)).strip()
+        if not text:
+            return
+        if len(self.blocks) >= MAX_BLOCKS:
+            self.truncated = True
+            return
+        if len(text) > MAX_BLOCK_CHARS:
+            text = text[:MAX_BLOCK_CHARS].rstrip()
+            self.truncated = True
+        self.blocks.append({"t": self._kind, "text": text})
+
+    def handle_starttag(self, tag, attrs):
+        tag = self._tag(tag)
+        if tag in SKIP_TAGS:
+            self._skip += 1
+            return
+        if self._skip:
+            return
+        if tag in HEADING_TAGS:
+            self._flush()
+            self._kind = "h"
+        elif tag == "li":
+            self._flush()
+            self._kind = "li"
+        elif tag in BLOCK_TAGS or tag == "br":
+            self._flush()
+            self._kind = "p"
+
+    def handle_endtag(self, tag):
+        tag = self._tag(tag)
+        if tag in SKIP_TAGS:
+            if self._skip > 0:
+                self._skip -= 1
+            return
+        if self._skip:
+            return
+        if tag in HEADING_TAGS or tag == "li" or tag in BLOCK_TAGS:
+            self._flush()
+            self._kind = "p"
+
+    def handle_data(self, data):
+        if self._skip:
+            return
+        if not self._parts and not data.strip():
+            return
+        self._parts.append(data)
+
+    def finish(self):
+        self.close()
+        self._flush()
+        return self.blocks, self.truncated
+
+
+def entry_content_html(element) -> str:
+    """The entry's full body: Atom <content>, else RSS <description>.
+
+    Returns the inner HTML as text. For XHTML content (child elements instead
+    of escaped markup) the children are serialized; the wrapper tag is dropped.
+    """
+    for name in ("content", "encoded", "description", "summary"):
+        child = find_child(element, name)
+        if child is None:
+            continue
+        if len(child) > 0:
+            parts = [child.text or ""]
+            parts.extend(ET.tostring(sub, encoding="unicode") for sub in child)
+            return "".join(parts)
+        if child.text and child.text.strip():
+            return child.text
+    return ""
+
+
+def extract_blocks(content_html: str):
+    parser = BlockExtractor()
+    parser.feed(content_html)
+    return parser.finish()
+
+
 def collect_entries(root_element):
     """RSS 2.0 nests items under <channel>; Atom lists entries at the top."""
     entries = []
@@ -123,12 +251,15 @@ def parse(feed_xml: bytes):
         if not title or not link:
             continue
         published = entry_published(element)
+        blocks, truncated = extract_blocks(entry_content_html(element))
         items.append({
             "title": title,
             "link": link,
             "author": entry_author(element),
             "published": published.isoformat() if published else "",
             "snippet": clean_snippet(element),
+            "blocks": blocks,
+            "truncated": truncated,
         })
     items.sort(key=lambda item: item["published"], reverse=True)
     return items

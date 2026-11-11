@@ -151,6 +151,36 @@ function age(iso, now) {
   return { unit: "day", value: Math.max(1, Math.floor(hours / 24)) }
 }
 
+// A feed article's reader blocks. The helper already caps each article, but
+// old rss-cache.json entries have no `blocks` and a hand-edited or hostile
+// feed could carry anything, so every block is checked here and junk is
+// dropped. Returns [{t: "h"|"p"|"li", text: string}].
+var MAX_ARTICLE_BLOCKS = 250
+var MAX_ARTICLE_BLOCK_CHARS = 2000
+
+function articleBlocks(item) {
+  if (!item || !Array.isArray(item.blocks)) return []
+  var out = []
+  for (var i = 0; i < item.blocks.length && out.length < MAX_ARTICLE_BLOCKS; i++) {
+    var block = item.blocks[i]
+    if (!block || typeof block.text !== "string") continue
+    var text = block.text
+    if (text.length > MAX_ARTICLE_BLOCK_CHARS) text = text.slice(0, MAX_ARTICLE_BLOCK_CHARS)
+    if (text.trim() === "") continue
+    var kind = block.t === "h" || block.t === "li" ? block.t : "p"
+    out.push({ t: kind, text: text })
+  }
+  return out
+}
+
+// The reader shows a "shortened, open in browser" hint when the feed's content
+// or the panel's cap cut the article off.
+function articleTruncated(item) {
+  if (!item) return false
+  if (item.truncated === true) return true
+  return articleBlocks(item).length >= MAX_ARTICLE_BLOCKS
+}
+
 // A crest URL is shown only when it looks safe: https, short, and it names
 // an image. Everything else falls back to the short name.
 function crestOk(url) {

@@ -7,12 +7,13 @@ import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
 
-// The Club Hub panel: next fixture, last-five form, and the club news feed.
+// The Club Hub panel: next fixture, last-five form, club news, and an
+// in-panel article reader built from the feed's own content (no scraping).
 // Open with the bar widget or: omarchy-shell shell toggle atifkhan161.club-hub
 //
 // All data comes from the plugin's Service (shared, single poller). Every
 // string that came from the network is rendered as PlainText: titles,
-// bylines, and snippets from a feed are untrusted markup sinks.
+// bylines, snippets, and reader blocks from a feed are untrusted markup sinks.
 
 Item {
   id: root
@@ -22,7 +23,9 @@ Item {
   property var shell: null
   property var manifest: null
   property var service: null
-  property string view: "hub"       // "hub" | "settings"
+  property string view: "hub"       // "hub" | "settings" | "reader"
+  // Which rssItems entry the reader is showing; -1 means none.
+  property int readerIndex: -1
 
   readonly property string selfId: manifest && manifest.id ? manifest.id : "atifkhan161.club-hub"
 
@@ -69,6 +72,26 @@ Item {
   readonly property var nextMatch: root.service ? root.service.nextMatch : null
   readonly property var lastFive: root.service ? root.service.lastFive : []
   readonly property var rssItems: root.service ? root.service.rssItems : []
+  readonly property var readerItem: root.view === "reader" && root.readerIndex >= 0
+    && root.readerIndex < root.rssItems.length ? root.rssItems[root.readerIndex] : null
+  readonly property var readerBlocks: Model.articleBlocks(root.readerItem)
+  readonly property string readerByline: {
+    if (!root.readerItem) return ""
+    var parts = []
+    if (root.readerItem.author) parts.push(root.readerItem.author)
+    var age = root.ageLabel(root.readerItem.published)
+    if (age !== "") parts.push(age)
+    return parts.join(" · ")
+  }
+  // A refresh can reorder or shrink the feed mid-read. If the stored index no
+  // longer points at an article, fall back to the hub instead of rendering an
+  // empty reader.
+  onRssItemsChanged: {
+    if (root.view === "reader" && root.readerIndex >= root.rssItems.length) {
+      root.readerIndex = -1
+      root.view = "hub"
+    }
+  }
   readonly property bool teamIdMatches: nextMatch
     ? (nextMatch.homeTeam && nextMatch.homeTeam.id === (hubConfig ? hubConfig.teamId : -1)
        || (nextMatch.awayTeam && nextMatch.awayTeam.id === (hubConfig ? hubConfig.teamId : -1)))
@@ -84,9 +107,24 @@ Item {
   function close() {
     if (!root.opened) return
     root.opened = false
-    root.view = "hub"
+    root.showHub()
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide(root.selfId)
+  }
+
+  // Reader navigation: the index is validated against the live feed so a
+  // refresh that removed the article cannot leave the reader pointing past
+  // the end.
+  function openReader(index) {
+    if (index < 0 || index >= root.rssItems.length) return
+    root.readerIndex = index
+    root.view = "reader"
+    readerFlick.contentY = 0
+  }
+
+  function showHub() {
+    root.readerIndex = -1
+    root.view = "hub"
   }
 
   function refresh() {
@@ -553,6 +591,7 @@ Item {
                 model: root.rssItems
                 delegate: ColumnLayout {
                   required property var modelData
+                  required property int index
                   spacing: 0
                   Layout.fillWidth: true
 
@@ -597,7 +636,7 @@ Item {
                       anchors.fill: parent
                       hoverEnabled: true
                       cursorShape: Qt.PointingHandCursor
-                      onClicked: root.openArticle(modelData)
+                      onClicked: root.openReader(index)
                     }
                   }
                 }
@@ -772,7 +811,155 @@ Item {
                 text: strings.t("settings.done")
                 foreground: root.foreground
                 accent: root.accent
-                onClicked: root.view = "hub"
+                onClicked: root.showHub()
+              }
+            }
+          }
+
+          // ----------------------------------------------------------- reader
+          // The reader is the third view. It renders only the feed's own
+          // content (blocks parsed by bin/rss.py); no article URL is fetched.
+          RowLayout {
+            visible: root.view === "reader"
+            Layout.fillWidth: true
+            spacing: Style.space(6)
+
+            PanelActionButton {
+              iconText: "󰅁"
+              tooltipText: strings.t("reader.back")
+              foreground: root.foreground
+              onClicked: root.showHub()
+            }
+            PlainText {
+              text: strings.t("reader.back")
+              color: root.muted
+              font.pixelSize: Style.font.caption
+              Layout.alignment: Qt.AlignVCenter
+            }
+            Item { Layout.fillWidth: true }
+          }
+
+          Flickable {
+            id: readerFlick
+            visible: root.view === "reader"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: width
+            contentHeight: readerColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            ColumnLayout {
+              id: readerColumn
+              width: readerFlick.width
+              spacing: Style.space(10)
+
+              PlainText {
+                text: root.readerItem ? root.readerItem.title : ""
+                font.pixelSize: Style.font.title
+                font.bold: true
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+              }
+
+              PlainText {
+                text: root.readerByline
+                color: root.muted
+                font.pixelSize: Style.font.caption
+                visible: text !== ""
+                Layout.fillWidth: true
+              }
+
+              Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: root.border
+              }
+
+              Repeater {
+                model: root.readerBlocks
+
+                delegate: PlainText {
+                  required property var modelData
+                  text: (modelData.t === "li" ? "• " : "") + modelData.text
+                  textFormat: Text.PlainText
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: modelData.t === "h" ? Style.font.heading : Style.font.body
+                  font.bold: modelData.t === "h"
+                  wrapMode: Text.WordWrap
+                  Layout.fillWidth: true
+                  Layout.leftMargin: modelData.t === "li" ? Style.space(10) : 0
+                }
+              }
+
+              // No body in the feed (or an old cache entry written before
+              // blocks existed): show the snippet, then point at the browser.
+              ColumnLayout {
+                visible: root.readerItem !== null && root.readerBlocks.length === 0
+                spacing: Style.space(6)
+                Layout.fillWidth: true
+
+                PlainText {
+                  text: root.readerItem && root.readerItem.snippet
+                    ? root.readerItem.snippet : strings.t("reader.noContent")
+                  color: root.foreground
+                  font.pixelSize: Style.font.body
+                  wrapMode: Text.WordWrap
+                  Layout.fillWidth: true
+                }
+                PlainText {
+                  text: strings.t("reader.noContentHint")
+                  color: root.muted
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
+                  Layout.fillWidth: true
+                }
+              }
+
+              PlainText {
+                visible: root.readerItem !== null && Model.articleTruncated(root.readerItem)
+                text: strings.t("reader.truncated")
+                color: root.muted
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+              }
+
+              // Browser escape hatch: only for a link that passes the same
+              // safety rule the hub rows use. Styled like the settings row.
+              Rectangle {
+                visible: root.readerItem !== null && Model.linkOk(root.readerItem.link)
+                Layout.fillWidth: true
+                Layout.topMargin: Style.space(4)
+                implicitHeight: openBrowserRow.implicitHeight + Style.space(12)
+                radius: Style.cornerRadius
+                color: openBrowserArea.containsMouse ? root.selBg : "transparent"
+
+                RowLayout {
+                  id: openBrowserRow
+                  anchors.fill: parent
+                  anchors.margins: Style.space(6)
+                  spacing: Style.space(6)
+                  PlainText {
+                    text: "󰐗"
+                    color: root.accent
+                    Layout.alignment: Qt.AlignVCenter
+                  }
+                  PlainText {
+                    text: strings.t("reader.openBrowser")
+                    color: root.accent
+                    font.pixelSize: Style.font.bodySmall
+                    Layout.alignment: Qt.AlignVCenter
+                  }
+                }
+                MouseArea {
+                  id: openBrowserArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.openArticle(root.readerItem)
+                }
               }
             }
           }

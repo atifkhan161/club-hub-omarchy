@@ -162,7 +162,11 @@ Item {
       rssState = "ok"
       rssError = ""
       saveRssCache(parsed)
-      console.log("club-hub rss fetched", parsed.length, "items")
+      var withBlocks = parsed.filter(function(item) {
+        return item && Array.isArray(item.blocks) && item.blocks.length > 0
+      }).length
+      console.log("club-hub rss fetched", parsed.length, "items;", withBlocks,
+        "with article text")
     } catch (e) {
       rssState = "error"
       rssError = "bad helper output"
