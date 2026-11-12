@@ -5,10 +5,6 @@ tracks one football club: the next fixture with a countdown, the last five
 results as a form strip, the club's RSS news feed, and an in-panel article
 reader — all in one panel.
 
-Default club: Real Madrid C.F. (football-data.org team id 86). Default feed:
-[Managing Madrid](https://www.managingmadrid.com/rss/index.xml). Both are
-configurable in the panel's settings.
-
 ## Screenshots
 
 ![Club Hub panel](docs/screenshots/hub.png)
@@ -106,6 +102,21 @@ omarchy plugin remove atifkhan161.club-hub --yes
 
 The config and cache files under `~/.config/omarchy/club-hub.json` and
 `$XDG_CACHE_HOME/omarchy/club-hub/` are yours to keep or delete.
+
+## Defaults
+
+Default club: Real Madrid C.F. (football-data.org team id 86). Default feed:
+[Managing Madrid](https://www.managingmadrid.com/rss/index.xml). Both are
+configurable in the panel's settings.
+
+## Credits
+
+- [Omarchy](https://omarchy.org) — desktop shell, plugin API, and theme system.
+- [Quickshell](https://quickshell.org) — the QML shell runtime.
+- [football-data.org](https://www.football-data.org) — fixtures, results, and club crests.
+- [Managing Madrid](https://www.managingmadrid.com) — the default club news feed.
+- [Nerd Fonts](https://www.nerdfonts.com) — glyphs used in the bar and panel.
+- Built by [atifkhan161](https://github.com/atifkhan161).
 
 ## License
 
