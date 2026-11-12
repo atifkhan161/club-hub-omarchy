@@ -43,6 +43,26 @@ Item {
     color: root.foreground
   }
 
+  // A club badge in a fixed slot: the slot keeps its size while the download
+  // is in flight, and disappears with the user's show-crest setting.
+  component Crest: Item {
+    property string source: ""
+    visible: root.showCrests
+    Layout.preferredWidth: root.crestSize
+    Layout.preferredHeight: root.crestSize
+    Layout.alignment: Qt.AlignVCenter
+
+    Image {
+      anchors.fill: parent
+      source: parent.source
+      visible: source !== ""
+      asynchronous: true
+      fillMode: Image.PreserveAspectFit
+      sourceSize: Qt.size(root.crestSize, root.crestSize)
+      smooth: true
+    }
+  }
+
   // -------------------------------------------------------------------- theme
   property color background: Color.menu.background
   property color foreground: Color.menu.text
@@ -96,6 +116,15 @@ Item {
     ? (nextMatch.homeTeam && nextMatch.homeTeam.id === (hubConfig ? hubConfig.teamId : -1)
        || (nextMatch.awayTeam && nextMatch.awayTeam.id === (hubConfig ? hubConfig.teamId : -1)))
     : true
+  // Both club badges, downloaded by the service into the cache and shown from
+  // local files. The size follows the shell's spacing scale like every other
+  // dimension in the panel.
+  readonly property bool showCrests: !!(root.hubConfig && root.hubConfig.showCrest)
+  readonly property int crestSize: Style.space(28)
+  readonly property string homeCrestUrl: root.showCrests && root.service
+    && root.service.homeCrestFileUrl !== "" ? root.service.homeCrestFileUrl : ""
+  readonly property string awayCrestUrl: root.showCrests && root.service
+    && root.service.awayCrestFileUrl !== "" ? root.service.awayCrestFileUrl : ""
   readonly property string teamLabel: root.service && root.service.teamName !== ""
     ? root.service.teamName : strings.t("panel.title")
 
@@ -398,8 +427,10 @@ Item {
                   }
 
                   RowLayout {
-                    spacing: Style.space(10)
+                    spacing: Style.space(8)
                     Layout.fillWidth: true
+
+                    Crest { source: root.homeCrestUrl }
 
                     PlainText {
                       text: root.nextMatch
@@ -415,29 +446,13 @@ Item {
                       horizontalAlignment: Text.AlignLeft
                     }
 
-                    ColumnLayout {
-                      spacing: 0
-                      PlainText {
-                        text: strings.t("match.vs")
-                        color: root.muted
-                        font.pixelSize: Style.font.bodySmall
-                        Layout.alignment: Qt.AlignHCenter
-                      }
-                      // Opponent crest, downloaded by the service into the
-                      // cache and shown from the local file — never loaded
-                      // over the network by the Image element itself, and
-                      // hidden entirely when the user turned crests off.
-                      Image {
-                        source: root.hubConfig && root.hubConfig.showCrest
-                          && root.service && root.service.crestFileUrl !== ""
-                          ? root.service.crestFileUrl : ""
-                        visible: source !== ""
-                        asynchronous: true
-                        fillMode: Image.PreserveAspectFit
-                        sourceSize: Qt.size(22, 22)
-                        smooth: true
-                        Layout.alignment: Qt.AlignHCenter
-                      }
+                    PlainText {
+                      text: strings.t("match.vs")
+                      color: root.muted
+                      font.pixelSize: Style.font.bodySmall
+                      Layout.alignment: Qt.AlignVCenter
+                      Layout.preferredWidth: Style.space(24)
+                      horizontalAlignment: Text.AlignHCenter
                     }
 
                     PlainText {
@@ -453,6 +468,8 @@ Item {
                       Layout.fillWidth: true
                       horizontalAlignment: Text.AlignRight
                     }
+
+                    Crest { source: root.awayCrestUrl }
                   }
 
                   RowLayout {

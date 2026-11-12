@@ -42,7 +42,7 @@ Item {
   readonly property var nextMatch: Model.nextMatch(matchesData)
   readonly property var lastFive: Model.lastFive(matchesData)
   readonly property string teamName: Model.teamName(matchesData, config.teamId)
-  onNextMatchChanged: root.updateCrest()
+  onNextMatchChanged: root.updateCrests()
 
   // ---- rss state -----------------------------------------------------------------
   property var rssData: []
@@ -53,26 +53,67 @@ Item {
   readonly property var rssItems: rssData.slice(0, config.maxRssItems)
 
   // ---- crest state ----------------------------------------------------------------
-  // The opponent crest is downloaded by curl into the cache and shown from the
-  // local file. A QML Image pointed straight at the https crest URL crashed
-  // the whole shell once (Qt 6.12 TLS-backend crash inside QNetworkAccessManager
-  // during SSL-cert init), and keeping the download in curl matches the
-  // plugin's network policy anyway: fixed source, timeout, size cap.
-  property string crestFileUrl: ""
-  property string crestRequestedUrl: ""
+  // Both teams' crests are downloaded by curl into the cache and shown from
+  // local files, one per side. A QML Image pointed straight at an https crest
+  // URL crashed the whole shell once (Qt 6.12 TLS-backend crash inside
+  // QNetworkAccessManager during SSL-cert init), and keeping the download in
+  // curl matches the plugin's network policy anyway: fixed source, timeout,
+  // size cap.
+  property string homeCrestFileUrl: ""
+  property string homeCrestRequestedUrl: ""
+  property string homeCrestPendingUrl: ""
+  property string homeCrestPendingPath: ""
+  property string awayCrestFileUrl: ""
+  property string awayCrestRequestedUrl: ""
+  property string awayCrestPendingUrl: ""
+  property string awayCrestPendingPath: ""
 
-  function updateCrest() {
-    var opp = Model.opponentOf(root.nextMatch, config.teamId)
-    var url = opp && Model.crestOk(opp.crest) ? opp.crest : ""
-    if (url === root.crestRequestedUrl) return
-    root.crestRequestedUrl = url
-    if (url === "") {
-      root.crestFileUrl = ""
+  function crestUrlFor(team) {
+    return team && Model.crestOk(team.crest) ? team.crest : ""
+  }
+
+  // One cache file per club id, so the Image source changes when the fixture
+  // changes clubs and Qt reloads instead of showing the previous badge.
+  function crestCachePath(team) {
+    var id = team && team.id !== undefined && team.id !== null ? String(team.id) : ""
+    return /^[0-9]+$/.test(id) ? root.cacheDir + "/crest-" + id + ".img" : ""
+  }
+
+  function updateCrests() {
+    updateCrest("home")
+    updateCrest("away")
+  }
+
+  function updateCrest(side) {
+    var proc = side === "home" ? homeCrestProc : awayCrestProc
+    if (!proc) return
+    var team = root.nextMatch ? root.nextMatch[side + "Team"] : null
+    var url = crestUrlFor(team)
+    var path = crestCachePath(team)
+    var key = url + "|" + path
+    var requested = side === "home" ? root.homeCrestRequestedUrl : root.awayCrestRequestedUrl
+    if (key === requested) return
+    if (side === "home") {
+      root.homeCrestRequestedUrl = key
+      root.homeCrestPendingUrl = key
+      root.homeCrestPendingPath = path
+    } else {
+      root.awayCrestRequestedUrl = key
+      root.awayCrestPendingUrl = key
+      root.awayCrestPendingPath = path
+    }
+    if (url === "" || path === "") {
+      if (proc.running) proc.running = false
+      if (side === "home") root.homeCrestFileUrl = ""
+      else root.awayCrestFileUrl = ""
       return
     }
-    crestProc.command = ["curl", "-fsS", "--max-time", "10", "--max-filesize", "524288",
-                         "-o", root.cacheDir + "/crest-cache.img", url]
-    crestProc.running = true
+    // Stop a download for a badge the fixture no longer uses, then fetch the
+    // current one into that club's cache file.
+    if (proc.running) proc.running = false
+    proc.command = ["curl", "-fsS", "--max-time", "10", "--max-filesize", "524288",
+                    "-o", path, url]
+    proc.running = true
   }
 
   // ---- fetching ------------------------------------------------------------------
@@ -196,6 +237,8 @@ Item {
     matchTimer.restart()
     rssTimer.restart()
     staleCheck.start()
+    // Retry any crest whose change handler ran before the processes existed.
+    root.updateCrests()
   }
 
   // Kick off a fetch once the cache files have had their chance to load.
@@ -234,13 +277,24 @@ Item {
     }
   }
 
-  // Opponent crest download. Exit 63 is curl's --max-filesize refusal; both
-  // failures just clear the crest instead of showing a stale club's badge.
+  // Crest downloads, one process per side. Exit 63 is curl's --max-filesize
+  // refusal; both failures clear that side's badge instead of showing a stale
+  // club's crest.
   Process {
-    id: crestProc
+    id: homeCrestProc
     onExited: function(exitCode) {
-      root.crestFileUrl = exitCode === 0 ? "file://" + root.cacheDir + "/crest-cache.img" : ""
-      if (exitCode !== 0) console.warn("club-hub crest download failed, curl exit", exitCode)
+      if (root.homeCrestRequestedUrl !== root.homeCrestPendingUrl) return
+      root.homeCrestFileUrl = exitCode === 0 ? "file://" + root.homeCrestPendingPath : ""
+      if (exitCode !== 0) console.warn("club-hub home crest download failed, curl exit", exitCode)
+    }
+  }
+
+  Process {
+    id: awayCrestProc
+    onExited: function(exitCode) {
+      if (root.awayCrestRequestedUrl !== root.awayCrestPendingUrl) return
+      root.awayCrestFileUrl = exitCode === 0 ? "file://" + root.awayCrestPendingPath : ""
+      if (exitCode !== 0) console.warn("club-hub away crest download failed, curl exit", exitCode)
     }
   }
 
@@ -270,7 +324,7 @@ Item {
   // or feed changed, so the panel never shows another team's data.
   Connections {
     target: config
-    function onTeamIdChanged() { root.fetchMatches(true); root.updateCrest() }
+    function onTeamIdChanged() { root.fetchMatches(true); root.updateCrests() }
     function onRssUrlChanged() { root.fetchRss(true) }
     function onMatchIntervalMinutesChanged() { matchTimer.restart(); root.fetchMatches(true) }
     function onRssIntervalMinutesChanged() { rssTimer.restart(); root.fetchRss(true) }
