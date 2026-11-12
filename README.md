@@ -30,7 +30,7 @@ footer row hands off to the browser only when you want the original.*
 ## Install
 
 ```bash
-omarchy plugin add <this-repo-url> --enable
+omarchy plugin add https://github.com/atifkhan161/club-hub-omarchy --enable
 ```
 
 The bar icon lands in the right section (`omarchy bar move` to rearrange).
