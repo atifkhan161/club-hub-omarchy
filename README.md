@@ -2,11 +2,30 @@
 
 A bar widget and panel for the [Omarchy](https://omarchy.org) desktop that
 tracks one football club: the next fixture with a countdown, the last five
-results as a form strip, and the club's RSS news feed — all in one panel.
+results as a form strip, the club's RSS news feed, and an in-panel article
+reader — all in one panel.
 
 Default club: Real Madrid C.F. (football-data.org team id 86). Default feed:
 [Managing Madrid](https://www.managingmadrid.com/rss/index.xml). Both are
 configurable in the panel's settings.
+
+## Screenshots
+
+![Club Hub panel](docs/screenshots/hub.png)
+
+*The panel: next fixture with both club badges (Real Madrid's included), the
+last-five form strip, and the club news feed.*
+
+![Next fixture card](docs/screenshots/fixture.png)
+
+*The fixture card up close. Both crests are downloaded by the service and
+cached per club, so changing fixtures cannot leave a stale badge on screen.*
+
+![Article reader](docs/screenshots/reader.png)
+
+*Selecting a news item opens this reader in the same panel. It renders the
+feed's own full-content HTML as plain text — no article URL is fetched. The
+footer row hands off to the browser only when you want the original.*
 
 ## Install
 
