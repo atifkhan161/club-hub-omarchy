@@ -42,13 +42,14 @@ function nextMatch(matches) {
   return upcoming[0] || null
 }
 
-// Last five finished matches, oldest first, for a left-to-right form strip.
+// Last five finished matches, newest first, so the most recent result sits
+// at the top of the form list.
 function lastFive(matches) {
   var done = matches.filter(function(m) {
     return m && m.status === FINISHED && safeDate(m.utcDate)
   })
   done.sort(function(a, b) { return safeDate(b.utcDate) - safeDate(a.utcDate) })
-  return done.slice(0, 5).reverse()
+  return done.slice(0, 5)
 }
 
 function opponentOf(match, teamId) {
