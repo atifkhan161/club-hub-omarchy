@@ -103,15 +103,17 @@ Item {
     if (age !== "") parts.push(age)
     return parts.join(" · ")
   }
-  // A refresh can reorder or shrink the feed mid-read. If the stored index no
-  // longer points at an article, fall back to the hub instead of rendering an
-  // empty reader.
-  onRssItemsChanged: {
+  // A refresh can reorder or shrink the feed mid-read. The bounds check runs
+  // in a deferred callback: reading rssItems inside the change handler made
+  // QML see a binding loop (the handler wrote view/index, which readerItem
+  // depends on). If the stored index no longer points at an article, fall
+  // back to the hub instead of rendering an empty reader.
+  onRssItemsChanged: Qt.callLater(function() {
     if (root.view === "reader" && root.readerIndex >= root.rssItems.length) {
       root.readerIndex = -1
       root.view = "hub"
     }
-  }
+  })
   readonly property bool teamIdMatches: nextMatch
     ? (nextMatch.homeTeam && nextMatch.homeTeam.id === (hubConfig ? hubConfig.teamId : -1)
        || (nextMatch.awayTeam && nextMatch.awayTeam.id === (hubConfig ? hubConfig.teamId : -1)))
